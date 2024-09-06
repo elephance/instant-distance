@@ -80,10 +80,16 @@ fn main() {
 
     // from tests above
     // let (seed, recall) = randomized(Builder::default().select_heuristic(None));
-    let builder = Builder::default().select_heuristic(None);
+    let builder = Builder::without_seed().select_heuristic(None);
 
-    let seed = ThreadRng::default().gen::<u64>();
+    // seeded using OS RNG
+    // let seed = ThreadRng::default().gen::<u64>();
+    
+    let seed = 42;
+    // uses ChaCha12
     let mut rng = StdRng::seed_from_u64(seed);
+    
+    let builder = builder.seed(rng.gen());
 
     // generate some random points
     println!("randomly generating points ...");

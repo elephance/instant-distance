@@ -96,6 +96,20 @@ impl Builder {
         } = self;
         (ef_search, ef_construction, ml, seed)
     }
+
+    /// Construct the builder without relying on OS random values
+    pub fn without_seed() -> Self {
+        // the same values as default except the rand argument
+        Self {
+            ef_search: 100,
+            ef_construction: 100,
+            heuristic: Some(Heuristic::default()),
+            ml: 1.0 / (M as f32).ln(),
+            seed: 0,
+            #[cfg(feature = "indicatif")]
+            progress: None,
+        }
+    }
 }
 
 impl Default for Builder {
@@ -783,5 +797,7 @@ pub trait Point: Clone + Sync {
 
 /// The parameter `M` from the paper
 ///
+/// AA: the number of added connections per layer M
+/// 
 /// This should become a generic argument to `Hnsw` when possible.
 const M: usize = 32;
