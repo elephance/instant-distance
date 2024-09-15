@@ -60,7 +60,7 @@ impl Visited {
 
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct UpperNode([PointId; M]);
+pub struct UpperNode([PointId; M]);
 
 impl UpperNode {
     pub(crate) fn from_zero(node: &ZeroNode) -> Self {
@@ -80,7 +80,7 @@ impl<'a> Layer for &'a [UpperNode] {
 
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ZeroNode(
+pub struct ZeroNode(
     #[cfg_attr(feature = "serde", serde(with = "BigArray"))] pub(crate) [PointId; M * 2],
 );
 
