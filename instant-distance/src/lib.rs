@@ -206,10 +206,10 @@ impl<'a, P, V> MapItem<'a, P, V> {
 
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Hnsw<P> {
-    ef_search: usize,
-    points: Vec<P>,
-    zero: Vec<ZeroNode>,
-    layers: Vec<Vec<UpperNode>>,
+    pub ef_search: usize,
+    pub points: Vec<P>,
+    pub zero: Vec<ZeroNode>,
+    pub layers: Vec<Vec<UpperNode>>,
 }
 
 impl<P> Hnsw<P>
