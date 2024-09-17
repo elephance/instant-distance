@@ -15,8 +15,9 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterato
 use serde::{Deserialize, Serialize};
 
 mod types;
-pub use types::PointId;
-use types::{Candidate, Layer, LayerId, UpperNode, Visited, ZeroNode, INVALID};
+// pub use types::PointId;
+pub use types::*;
+// use types::{Candidate, Layer, LayerId, UpperNode, Visited, ZeroNode, INVALID};
 
 #[derive(Clone)]
 /// Parameters for building the `Hnsw`
@@ -800,4 +801,4 @@ pub trait Point: Clone + Sync {
 /// AA: the number of added connections per layer M
 /// 
 /// This should become a generic argument to `Hnsw` when possible.
-const M: usize = 32;
+pub const M: usize = 32;
