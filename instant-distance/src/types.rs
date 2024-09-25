@@ -10,7 +10,7 @@ use serde_big_array::BigArray;
 
 use crate::{Hnsw, Point, M};
 
-pub(crate) struct Visited {
+pub struct Visited {
     store: Vec<u8>,
     generation: u8,
 }
@@ -23,7 +23,7 @@ impl Visited {
         }
     }
 
-    pub(crate) fn reserve_capacity(&mut self, capacity: usize) {
+    pub fn reserve_capacity(&mut self, capacity: usize) {
         if self.store.len() != capacity {
             self.store.resize(capacity, self.generation - 1);
         }
@@ -60,7 +60,7 @@ impl Visited {
 
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Copy, Debug, Default)]
-pub struct UpperNode([PointId; M]);
+pub struct UpperNode(pub [PointId; M]);
 
 impl UpperNode {
     pub(crate) fn from_zero(node: &ZeroNode) -> Self {
@@ -150,12 +150,12 @@ impl<'a> Layer for &'a [RwLock<ZeroNode>] {
     }
 }
 
-pub(crate) trait Layer {
+pub trait Layer {
     type Slice: Deref<Target = [PointId]>;
     fn nearest_iter(&self, pid: PointId) -> NearestIter<Self::Slice>;
 }
 
-pub(crate) struct NearestIter<T> {
+pub struct NearestIter<T> {
     node: T,
     cur: usize,
 }
@@ -164,7 +164,7 @@ impl<T> NearestIter<T>
 where
     T: Deref<Target = [PointId]>,
 {
-    fn new(node: T) -> Self {
+    pub fn new(node: T) -> Self {
         Self { node, cur: 0 }
     }
 }
@@ -192,14 +192,14 @@ where
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(crate) struct LayerId(pub usize);
+pub struct LayerId(pub usize);
 
 impl LayerId {
-    pub(crate) fn descend(&self) -> impl Iterator<Item = LayerId> {
+    pub fn descend(&self) -> impl Iterator<Item = LayerId> {
         DescendingLayerIter { next: Some(self.0) }
     }
 
-    pub(crate) fn is_zero(&self) -> bool {
+    pub fn is_zero(&self) -> bool {
         self.0 == 0
     }
 }
@@ -238,7 +238,7 @@ pub struct Candidate {
 /// This can be used to index into the `Hnsw` to refer to the `Point` data.
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct PointId(pub(crate) u32);
+pub struct PointId(pub u32);
 
 impl PointId {
     /// Whether this value represents a valid point

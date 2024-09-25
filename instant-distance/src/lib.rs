@@ -1,15 +1,14 @@
-use std::cmp::{max, Ordering, Reverse};
-use std::collections::BinaryHeap;
-use std::collections::HashSet;
-#[cfg(feature = "indicatif")]
 use std::sync::atomic::{self, AtomicUsize};
+use std::{
+    cmp::{max, Ordering, Reverse},
+    collections::{BinaryHeap, HashSet},
+};
 
 #[cfg(feature = "indicatif")]
 use indicatif::ProgressBar;
 use ordered_float::OrderedFloat;
 use parking_lot::{Mutex, RwLock};
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -267,7 +266,6 @@ where
         // Give all points a random layer and sort the list of nodes by descending order for
         // construction. This allows us to copy higher layers to lower layers as construction
         // progresses, while preserving randomness in each point's layer and insertion order.
-
         assert!(points.len() < u32::MAX as usize);
         let mut shuffled = (0..points.len())
             .map(|i| (PointId(rng.random_range(0..points.len() as u32)), i))
@@ -312,7 +310,6 @@ where
             ef_construction,
             #[cfg(feature = "indicatif")]
             progress,
-            #[cfg(feature = "indicatif")]
             done: AtomicUsize::new(0),
         };
 
@@ -321,6 +318,7 @@ where
             if let Some(bar) = &state.progress {
                 bar.set_message(format!("Building index (layer {})", layer.0));
             }
+            println!(".. building index (layer {})", layer.0);
 
             let inserter = |pid| state.insert(pid, layer, &layers);
 
@@ -348,6 +346,7 @@ where
             bar.finish();
         }
 
+        let x = &layers[0][0].0;
         (
             Self {
                 ef_search,
@@ -418,7 +417,7 @@ pub struct Item<'a, P> {
 }
 
 impl<'a, P> Item<'a, P> {
-    fn new(candidate: Candidate, hnsw: &'a Hnsw<P>) -> Self {
+    pub fn new<H: std::ops::Index<PointId, Output = P>>(candidate: Candidate, hnsw: &'a H) -> Self {
         Self {
             distance: candidate.distance.into_inner(),
             pid: candidate.pid,
@@ -436,7 +435,6 @@ struct Construction<'a, P: Point> {
     ef_construction: usize,
     #[cfg(feature = "indicatif")]
     progress: Option<ProgressBar>,
-    #[cfg(feature = "indicatif")]
     done: AtomicUsize,
 }
 
@@ -539,6 +537,11 @@ impl<P: Point> Construction<'_, P> {
             }
         }
 
+        let value = self.done.fetch_add(1, atomic::Ordering::Relaxed);
+        if value % 1000 == 0 {
+            println!("==> {} / {}", value, self.points.len());
+        }
+
         self.pool.push((search, insertion));
     }
 }
@@ -574,7 +577,7 @@ impl SearchPool {
 /// initialized by using `push()` to add the initial enter points.
 pub struct Search {
     /// Nodes visited so far (`v` in the paper)
-    visited: Visited,
+    pub visited: Visited,
     /// Candidates for further inspection (`C` in the paper)
     candidates: BinaryHeap<Reverse<Candidate>>,
     /// Nearest neighbors found so far (`W` in the paper)
@@ -585,7 +588,7 @@ pub struct Search {
     working: Vec<Candidate>,
     discarded: Vec<Candidate>,
     /// Maximum number of nearest neighbors to retain (`ef` in the paper)
-    ef: usize,
+    pub ef: usize,
 }
 
 impl Search {
@@ -610,7 +613,7 @@ impl Search {
     ///
     /// Invariants: `self.nearest` should be in sorted (nearest first) order, and should be
     /// truncated to `self.ef`.
-    fn search<L: Layer, P: Point>(&mut self, point: &P, layer: L, points: &[P], links: usize) {
+    pub fn search<L: Layer, P: Point>(&mut self, point: &P, layer: L, points: &[P], links: usize) {
         while let Some(Reverse(candidate)) = self.candidates.pop() {
             if let Some(furthest) = self.nearest.last() {
                 if candidate.distance > furthest.distance {
@@ -628,7 +631,7 @@ impl Search {
         }
     }
 
-    fn add_neighbor_heuristic<L: Layer, P: Point>(
+    pub fn add_neighbor_heuristic<L: Layer, P: Point>(
         &mut self,
         new: PointId,
         current: impl Iterator<Item = PointId>,
@@ -648,7 +651,7 @@ impl Search {
     /// Heuristically sort and truncate neighbors in `self.nearest`
     ///
     /// Invariant: `self.nearest` must be in sorted (nearest first) order.
-    fn select_heuristic<L: Layer, P: Point>(
+    pub fn select_heuristic<L: Layer, P: Point>(
         &mut self,
         point: &P,
         layer: L,
@@ -716,7 +719,7 @@ impl Search {
     ///
     /// Will immediately return if the node has been considered before. This implements
     /// the inner loop from the paper's algorithm 2.
-    fn push<P: Point>(&mut self, pid: PointId, point: &P, points: &[P]) {
+    pub fn push<P: Point>(&mut self, pid: PointId, point: &P, points: &[P]) {
         if !self.visited.insert(pid) {
             return;
         }
@@ -741,7 +744,7 @@ impl Search {
     ///
     /// Invariant: `nearest` should be sorted and truncated before this is called. This is generally
     /// the case because `Layer::search()` is always called right before calling `cull()`.
-    fn cull(&mut self) {
+    pub fn cull(&mut self) {
         self.candidates.clear();
         for &candidate in self.nearest.iter() {
             self.candidates.push(Reverse(candidate));
@@ -752,7 +755,7 @@ impl Search {
     }
 
     /// Resets the state to be ready for a new search
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         let Search {
             visited,
             candidates,
@@ -774,7 +777,7 @@ impl Search {
         &self.nearest
     }
 
-    fn iter(&self) -> impl ExactSizeIterator<Item = Candidate> + '_ {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Candidate> + '_ {
         self.nearest.iter().copied()
     }
 }
@@ -799,6 +802,6 @@ pub trait Point: Clone + Sync {
 /// The parameter `M` from the paper
 ///
 /// AA: the number of added connections per layer M
-/// 
+///
 /// This should become a generic argument to `Hnsw` when possible.
 pub const M: usize = 32;
