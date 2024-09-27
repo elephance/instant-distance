@@ -1,3 +1,5 @@
+use std::ops::Index;
+use std::slice::SliceIndex;
 use std::sync::atomic::{self, AtomicUsize};
 use std::{
     cmp::{max, Ordering, Reverse},
@@ -346,7 +348,6 @@ where
             bar.finish();
         }
 
-        let x = &layers[0][0].0;
         (
             Self {
                 ef_search,
@@ -375,7 +376,7 @@ where
         }
 
         search.visited.reserve_capacity(self.points.len());
-        search.push(PointId(0), point, &self.points);
+        search.push(PointId(0), point, &self.points.as_slice());
         for cur in LayerId(self.layers.len()).descend() {
             let (ef, num) = match cur.is_zero() {
                 true => (self.ef_search, M * 2),
@@ -384,8 +385,13 @@ where
 
             search.ef = ef;
             match cur.0 {
-                0 => search.search(point, self.zero.as_slice(), &self.points, num),
-                l => search.search(point, self.layers[l - 1].as_slice(), &self.points, num),
+                0 => search.search(point, self.zero.as_slice(), &self.points.as_slice(), num),
+                l => search.search(
+                    point,
+                    self.layers[l - 1].as_slice(),
+                    &self.points.as_slice(),
+                    num,
+                ),
             }
 
             if !cur.is_zero() {
@@ -454,7 +460,7 @@ impl<P: Point> Construction<'_, P> {
 
         let point = &self.points[new];
         search.reset();
-        search.push(PointId(0), point, self.points);
+        search.push(PointId(0), point, &self.points);
         let num = if layer.is_zero() { M * 2 } else { M };
 
         for cur in self.top.descend() {
@@ -465,11 +471,11 @@ impl<P: Point> Construction<'_, P> {
             };
             match cur > layer {
                 true => {
-                    search.search(point, layers[cur.0 - 1].as_slice(), self.points, num);
+                    search.search(point, layers[cur.0 - 1].as_slice(), &self.points, num);
                     search.cull();
                 }
                 false => {
-                    search.search(point, self.zero, self.points, num);
+                    search.search(point, self.zero, &self.points, num);
                     break;
                 }
             }
@@ -481,7 +487,7 @@ impl<P: Point> Construction<'_, P> {
                 &candidates[..Ord::min(candidates.len(), M * 2)]
             }
             Some(heuristic) => {
-                search.select_heuristic(&self.points[new], self.zero, self.points, heuristic)
+                search.select_heuristic(&self.points[new], self.zero, &self.points, heuristic)
             }
         };
 
@@ -500,7 +506,7 @@ impl<P: Point> Construction<'_, P> {
                     self.zero.nearest_iter(pid),
                     self.zero,
                     &self.points[pid],
-                    self.points,
+                    &self.points,
                     heuristic,
                 );
 
@@ -509,7 +515,8 @@ impl<P: Point> Construction<'_, P> {
                     .rewrite(found.iter().map(|candidate| candidate.pid));
             } else {
                 // Find the correct index to insert at to keep the neighbor's neighbors sorted
-                let old = &self.points[pid];
+                //let old = &self.points[pid];
+                let old_pid = pid;
                 let idx = self.zero[pid]
                     .read()
                     .binary_search_by(|third| {
@@ -520,7 +527,8 @@ impl<P: Point> Construction<'_, P> {
                             _ => return Ordering::Greater,
                         };
 
-                        distance.cmp(&old.distance(&self.points[third]).into())
+                        let dst = self.points.calc_distance(old_pid, third);
+                        distance.cmp(&dst.into())
                     })
                     .unwrap_or_else(|e| e);
 
@@ -579,22 +587,24 @@ pub struct Search {
     /// Nodes visited so far (`v` in the paper)
     pub visited: Visited,
     /// Candidates for further inspection (`C` in the paper)
-    candidates: BinaryHeap<Reverse<Candidate>>,
+    pub candidates: BinaryHeap<Reverse<Candidate>>,
     /// Nearest neighbors found so far (`W` in the paper)
     ///
     /// This must always be in sorted (nearest first) order.
-    nearest: Vec<Candidate>,
+    pub nearest: Vec<Candidate>,
     /// Working set for heuristic selection
-    working: Vec<Candidate>,
-    discarded: Vec<Candidate>,
+    pub working: Vec<Candidate>,
+    pub discarded: Vec<Candidate>,
     /// Maximum number of nearest neighbors to retain (`ef` in the paper)
     pub ef: usize,
 }
 
 impl Search {
-    fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             visited: Visited::with_capacity(capacity),
+            nearest: Vec::with_capacity(100),
+            candidates: BinaryHeap::with_capacity(1000),
             ..Default::default()
         }
     }
@@ -613,7 +623,13 @@ impl Search {
     ///
     /// Invariants: `self.nearest` should be in sorted (nearest first) order, and should be
     /// truncated to `self.ef`.
-    pub fn search<L: Layer, P: Point>(&mut self, point: &P, layer: L, points: &[P], links: usize) {
+    pub fn search<L: Layer, P: Point, Ps: PointMgr<P> + ?Sized>(
+        &mut self,
+        point: &P,
+        layer: L,
+        points: &Ps,
+        links: usize,
+    ) {
         while let Some(Reverse(candidate)) = self.candidates.pop() {
             if let Some(furthest) = self.nearest.last() {
                 if candidate.distance > furthest.distance {
@@ -631,13 +647,13 @@ impl Search {
         }
     }
 
-    pub fn add_neighbor_heuristic<L: Layer, P: Point>(
+    pub fn add_neighbor_heuristic<L: Layer, P: Point, Ps: PointMgr<P> + ?Sized>(
         &mut self,
         new: PointId,
         current: impl Iterator<Item = PointId>,
         layer: L,
         point: &P,
-        points: &[P],
+        points: &Ps,
         params: Heuristic,
     ) -> &[Candidate] {
         self.reset();
@@ -651,11 +667,11 @@ impl Search {
     /// Heuristically sort and truncate neighbors in `self.nearest`
     ///
     /// Invariant: `self.nearest` must be in sorted (nearest first) order.
-    pub fn select_heuristic<L: Layer, P: Point>(
+    pub fn select_heuristic<L: Layer, P: Point, Ps: PointMgr<P> + ?Sized>(
         &mut self,
         point: &P,
         layer: L,
-        points: &[P],
+        points: &Ps,
         params: Heuristic,
     ) -> &[Candidate] {
         self.working.clear();
@@ -669,8 +685,8 @@ impl Search {
                         continue;
                     }
 
-                    let other = &points[hop];
-                    let distance = OrderedFloat::from(point.distance(other));
+                    let dst = points.calc_distance_from(hop, point);
+                    let distance = OrderedFloat::from(dst);
                     let new = Candidate { distance, pid: hop };
                     self.working.push(new);
                 }
@@ -690,9 +706,9 @@ impl Search {
 
             // Disadvantage candidates which are closer to an existing result point than they
             // are to the query point, to facilitate bridging between clustered points.
-            let candidate_point = &points[candidate.pid];
             let nearest = !self.nearest.iter().any(|result| {
-                let distance = OrderedFloat::from(candidate_point.distance(&points[result.pid]));
+                let dst = points.calc_distance(candidate.pid, result.pid);
+                let distance = OrderedFloat::from(dst);
                 distance < candidate.distance
             });
 
@@ -719,13 +735,18 @@ impl Search {
     ///
     /// Will immediately return if the node has been considered before. This implements
     /// the inner loop from the paper's algorithm 2.
-    pub fn push<P: Point>(&mut self, pid: PointId, point: &P, points: &[P]) {
+    pub fn push<P: Point, Ps: PointMgr<P> + ?Sized>(
+        &mut self,
+        pid: PointId,
+        point: &P,
+        points: &Ps,
+    ) {
         if !self.visited.insert(pid) {
             return;
         }
 
-        let other = &points[pid];
-        let distance = OrderedFloat::from(point.distance(other));
+        let dst = points.calc_distance_from(pid, point);
+        let distance = OrderedFloat::from(dst);
         let new = Candidate { distance, pid };
         let idx = match self.nearest.binary_search(&new) {
             Err(idx) if idx < self.ef => idx,
@@ -796,7 +817,7 @@ impl Default for Search {
 }
 
 pub trait Point: Clone + Sync {
-    fn distance(&self, other: &Self) -> f32;
+    fn xdistance(&self, other: &Self) -> f32;
 }
 
 /// The parameter `M` from the paper
@@ -805,3 +826,34 @@ pub trait Point: Clone + Sync {
 ///
 /// This should become a generic argument to `Hnsw` when possible.
 pub const M: usize = 32;
+
+pub trait PointMgr<P: Point> {
+    fn calc_distance(&self, a: PointId, b: PointId) -> f32;
+
+    fn calc_distance_from(&self, a: PointId, b: &P) -> f32;
+
+    fn get(&self, idx: PointId) -> &P;
+
+    fn num_vectors(&self) -> usize;
+}
+
+impl<P: Point> PointMgr<P> for &[P] {
+    fn calc_distance(&self, a: PointId, b: PointId) -> f32 {
+        let a = &self[a];
+        let b = &self[b];
+        a.xdistance(b)
+    }
+
+    fn calc_distance_from(&self, a: PointId, b: &P) -> f32 {
+        let a = &self[a];
+        a.xdistance(b)
+    }
+
+    fn get(&self, idx: PointId) -> &P {
+        &self[idx]
+    }
+
+    fn num_vectors(&self) -> usize {
+        self.len()
+    }
+}

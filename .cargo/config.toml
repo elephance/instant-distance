@@ -9,3 +9,7 @@ rustflags = [
   "-C", "link-arg=-undefined",
   "-C", "link-arg=dynamic_lookup",
 ]
+
+[alias]
+check-all = "check"
+build-all = "build"
