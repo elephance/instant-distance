@@ -278,7 +278,15 @@ impl<P: Point> Index<PointId> for [P] {
     type Output = P;
 
     fn index(&self, index: PointId) -> &Self::Output {
-        &self[index.0 as usize]
+        &(*self)[index.0 as usize]
+    }
+}
+
+impl<P: Point> Index<PointId> for &[P] {
+    type Output = P;
+
+    fn index(&self, index: PointId) -> &Self::Output {
+        &(**self)[index]
     }
 }
 
