@@ -320,7 +320,6 @@ where
             if let Some(bar) = &state.progress {
                 bar.set_message(format!("Building index (layer {})", layer.0));
             }
-            println!(".. building index (layer {})", layer.0);
 
             let inserter = |pid| state.insert(pid, layer, &layers);
 
@@ -547,7 +546,12 @@ impl<P: Point> Construction<'_, P> {
 
         let value = self.done.fetch_add(1, atomic::Ordering::Relaxed);
         if value % 1000 == 0 {
-            println!("==> {} / {}", value, self.points.len());
+            println!(
+                "building layer {} with points {} / {}",
+                layer.0,
+                value,
+                self.points.len()
+            );
         }
 
         self.pool.push((search, insertion));
