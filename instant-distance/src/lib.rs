@@ -545,12 +545,12 @@ impl<'a, P: Point> Construction<'a, P> {
         }
 
         let value = self.done.fetch_add(1, atomic::Ordering::Relaxed);
-        if value % 1000 == 0 {
+        if value % 500 == 0 {
             println!(
-                "building layer {} with points {} / {}",
-                layer.0,
+                "building index, point {} / {}, in layer {}              \r",
                 value,
-                self.points.len()
+                self.points.len(),
+                layer.0,
             );
         }
 
