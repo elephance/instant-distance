@@ -1,9 +1,9 @@
-use std::ops::Index;
-use std::slice::SliceIndex;
-use std::sync::atomic::{self, AtomicUsize};
 use std::{
     cmp::{max, Ordering, Reverse},
     collections::{BinaryHeap, HashSet},
+    ops::{Deref, Index},
+    slice::SliceIndex,
+    sync::atomic::{self, AtomicUsize},
 };
 
 #[cfg(feature = "indicatif")]
@@ -627,7 +627,7 @@ impl Search {
     ///
     /// Invariants: `self.nearest` should be in sorted (nearest first) order, and should be
     /// truncated to `self.ef`.
-    pub fn search<L: Layer, P: Point, Ps: PointMgr<P> + ?Sized>(
+    pub fn search<'a, L: Layer, P: Point, Ps: PointMgr<'a, P> + ?Sized>(
         &mut self,
         point: &P,
         layer: L,
@@ -651,7 +651,7 @@ impl Search {
         }
     }
 
-    pub fn add_neighbor_heuristic<L: Layer, P: Point, Ps: PointMgr<P> + ?Sized>(
+    pub fn add_neighbor_heuristic<'a, L: Layer, P: Point, Ps: PointMgr<'a, P> + ?Sized>(
         &mut self,
         new: PointId,
         current: impl Iterator<Item = PointId>,
@@ -671,7 +671,7 @@ impl Search {
     /// Heuristically sort and truncate neighbors in `self.nearest`
     ///
     /// Invariant: `self.nearest` must be in sorted (nearest first) order.
-    pub fn select_heuristic<L: Layer, P: Point, Ps: PointMgr<P> + ?Sized>(
+    pub fn select_heuristic<'a, L: Layer, P: Point, Ps: PointMgr<'a, P> + ?Sized>(
         &mut self,
         point: &P,
         layer: L,
@@ -739,7 +739,7 @@ impl Search {
     ///
     /// Will immediately return if the node has been considered before. This implements
     /// the inner loop from the paper's algorithm 2.
-    pub fn push<P: Point, Ps: PointMgr<P> + ?Sized>(
+    pub fn push<'a, P: Point, Ps: PointMgr<'a, P> + ?Sized>(
         &mut self,
         pid: PointId,
         point: &P,
@@ -831,17 +831,21 @@ pub trait Point: Clone + Sync {
 /// This should become a generic argument to `Hnsw` when possible.
 pub const M: usize = 32;
 
-pub trait PointMgr<P: Point> {
+pub trait PointMgr<'a, P: Point> {
+    type R: Deref<Target = P>;
+
     fn calc_distance(&self, a: PointId, b: PointId) -> f32;
 
     fn calc_distance_from(&self, a: PointId, b: &P) -> f32;
 
-    fn get(&self, idx: PointId) -> &P;
+    fn get(&'a self, idx: PointId) -> Self::R;
 
     fn num_vectors(&self) -> usize;
 }
 
-impl<P: Point> PointMgr<P> for &[P] {
+impl<'a, P: Point> PointMgr<'a, P> for &'a [P] {
+    type R = &'a P;
+
     fn calc_distance(&self, a: PointId, b: PointId) -> f32 {
         let a = &self[a];
         let b = &self[b];
@@ -853,7 +857,7 @@ impl<P: Point> PointMgr<P> for &[P] {
         a.xdistance(b)
     }
 
-    fn get(&self, idx: PointId) -> &P {
+    fn get(&'a self, idx: PointId) -> Self::R {
         &self[idx]
     }
 
