@@ -4,6 +4,8 @@ use std::{
     ops::Deref,
     sync::atomic::{self, AtomicUsize},
 };
+// #[cfg(not(feature = "segment-vec"))]
+// use std::vec::Vec;
 
 #[cfg(feature = "indicatif")]
 use indicatif::ProgressBar;
@@ -18,6 +20,12 @@ mod types;
 // pub use types::PointId;
 pub use types::*;
 // use types::{Candidate, Layer, LayerId, UpperNode, Visited, ZeroNode, INVALID};
+
+#[cfg(feature = "segment-vec")]
+mod vec;
+// #[cfg(feature = "segment-vec")]
+// use vec::Vec;
+
 
 #[derive(Clone)]
 /// Parameters for building the `Hnsw`
@@ -206,11 +214,21 @@ impl<'a, P, V> MapItem<'a, P, V> {
 }
 
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg(not(feature = "segment-vec"))]
 pub struct Hnsw<P> {
     pub ef_search: usize,
     pub points: Vec<P>,
     pub zero: Vec<ZeroNode>,
     pub layers: Vec<Vec<UpperNode>>,
+}
+
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg(feature = "segment-vec")]
+pub struct Hnsw<P> {
+    ef_search: usize,
+    points: Vec<P>,
+    zero: vec::Vec<ZeroNode>,
+    layers: Vec<vec::Vec<UpperNode>>,
 }
 
 impl<P> Hnsw<P>
@@ -237,15 +255,16 @@ where
         }
 
         if points.is_empty() {
-            return (
-                Self {
-                    ef_search,
-                    zero: Vec::new(),
-                    points: Vec::new(),
-                    layers: Vec::new(),
-                },
-                Vec::new(),
-            );
+            todo!()
+            // return (
+            //     Self {
+            //         ef_search,
+            //         zero: Vec::new(),
+            //         points: Vec::new(),
+            //         layers: Vec::new(),
+            //     },
+            //     Vec::new(),
+            // );
         }
 
         // Determine the number and size of layers.
@@ -296,7 +315,10 @@ where
 
         // Initialize data for layers
 
+        #[cfg(not(feature = "segmented-vec"))]
         let mut layers = vec![vec![]; top.0];
+        #[cfg(feature = "segmented-vec")]
+        let mut layers = vec![vec::Vec::new(); top.0];
         let zero = points
             .iter()
             .map(|_| RwLock::new(ZeroNode::default()))
@@ -320,7 +342,8 @@ where
                 bar.set_message(format!("Building index (layer {})", layer.0));
             }
 
-            let inserter = |pid| state.insert(pid, layer, &layers);
+            // TODO: make insterter function work with SegmentedVector
+            let inserter = |pid| state.insert(pid, layer, layers.as_slice());
 
             let end = range.end;
             if layer == top {
@@ -337,6 +360,8 @@ where
                 (&state.zero[..end])
                     .into_par_iter()
                     .map(|zero| UpperNode::from_zero(&zero.read()))
+                    // .collect()
+                    // TODO: implement collect into vec for segmented vector
                     .collect_into_vec(&mut layers[layer.0 - 1]);
             }
         }
@@ -383,13 +408,21 @@ where
 
             search.ef = ef;
             match cur.0 {
-                0 => search.search(point, self.zero.as_slice(), &self.points.as_slice(), num),
-                l => search.search(
-                    point,
-                    self.layers[l - 1].as_slice(),
-                    &self.points.as_slice(),
-                    num,
-                ),
+                // TODO: make search work on PointMgr type ...
+                0 => {
+                    #[cfg(feature = "segment-vec")]
+                    let layer = &self.zero;
+                    #[cfg(not(feature = "segment-vec"))]
+                    let layer = self.zero.as_slice();
+                    search.search(point, layer, &self.points.as_slice(), num)
+                },
+                l => {
+                    #[cfg(feature = "segment-vec")]
+                    let layer = &self.layers[l - 1];
+                    #[cfg(not(feature = "segment-vec"))]
+                    let layer = self.layers[l - 1].as_slice();
+                    search.search(point, layer, &self.points.as_slice(), num)
+                },
             }
 
             if !cur.is_zero() {
@@ -451,7 +484,12 @@ impl<P: Point> Construction<'_, P> {
     ///
     /// Creates the new node, initializing its `nearest` array and updates the nearest neighbors
     /// for the new node's neighbors if necessary before appending the new node to the layer.
-    fn insert(&self, new: PointId, layer: LayerId, layers: &[Vec<UpperNode>]) {
+    fn insert(&self, new: PointId, layer: LayerId, 
+        #[cfg(feature = "segment-vec")]
+        layers: &[vec::SegmentedVector<UpperNode>],
+        #[cfg(not(feature = "segment-vec"))]
+        layers: &[Vec<UpperNode>]
+    ) {
         let mut node = self.zero[new].write();
         let (mut search, mut insertion) = self.pool.pop();
         insertion.ef = self.ef_construction;
@@ -469,7 +507,11 @@ impl<P: Point> Construction<'_, P> {
             };
             match cur > layer {
                 true => {
-                    search.search(point, layers[cur.0 - 1].as_slice(), &self.points, num);
+                    #[cfg(feature = "segment-vec")]
+                    let layer = &layers[cur.0 - 1];
+                    #[cfg(not(feature = "segment-vec"))]
+                    let layer = layers[cur.0 - 1].as_slice();
+                    search.search(point, layer, &self.points, num);
                     search.cull();
                 }
                 false => {

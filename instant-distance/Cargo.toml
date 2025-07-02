@@ -13,6 +13,7 @@ readme = "../README.md"
 
 [features]
 with-serde = ["serde", "serde-big-array"]
+segment-vec = []
 
 [dependencies]
 indicatif = { version = "0.18", optional = true }
