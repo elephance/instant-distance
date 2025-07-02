@@ -24,10 +24,10 @@ fn randomized(builder: Builder) -> (u64, usize) {
     let seed = ThreadRng::default().gen::<u64>();
     let mut rng = StdRng::seed_from_u64(seed);
     let points = (0..1024)
-        .map(|_| Point(rng.gen(), rng.gen()))
+        .map(|_| Point(rng.random(), rng.random()))
         .collect::<Vec<_>>();
 
-    let query = Point(rng.gen(), rng.gen());
+    let query = Point(rng.random(), rng.random());
     let mut nearest = Vec::with_capacity(256);
     for (i, p) in points.iter().enumerate() {
         nearest.push((OrderedFloat::from(query.distance(p)), i));
@@ -89,16 +89,16 @@ fn main() {
     // uses ChaCha12
     let mut rng = StdRng::seed_from_u64(seed);
     
-    let builder = builder.seed(rng.gen());
+    let builder = builder.seed(rng.random());
 
     // generate some random points
     println!("randomly generating points ...");
     let points = (0..NUM_VECS)
-        .map(|_| Point(rng.gen(), rng.gen()))
+        .map(|_| Point(rng.random(), rng.random()))
         .collect::<Vec<_>>();
 
     // randomly generate a query vector
-    let query = Point(rng.gen(), rng.gen());
+    let query = Point(rng.random(), rng.random());
 
     // search for the 100 nearest vectors manually
     // nearest contains a distance and the index/id of the point
