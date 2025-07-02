@@ -184,18 +184,19 @@ unsafe impl<T> Sync for Segment<T> {}
 impl<'a> Layer for &'a SegmentedVector<UpperNode> {
     type Slice = &'a [PointId];
 
-    fn nearest_iter(&self, _pid: PointId) -> NearestIter<Self::Slice> {
-        todo!()
+    fn nearest_iter(&self, pid: PointId) -> NearestIter<Self::Slice> {
         // TODO: get unchecked ...
-        // NearestIter::new(&self[pid.0 as usize].0)
+        let node = self.get(pid.0 as usize).unwrap();
+        NearestIter::new(&node.0)
     }
 }
 
 impl<'a> Layer for &'a SegmentedVector<ZeroNode> {
     type Slice = &'a [PointId];
 
-    fn nearest_iter(&self, _pid: PointId) -> NearestIter<Self::Slice> {
-            todo!()
+    fn nearest_iter(&self, pid: PointId) -> NearestIter<Self::Slice> {
+        let node = self.get(pid.0 as usize).unwrap();
+        NearestIter::new(&node)
         // NearestIter::new(&self[pid.0 as usize])
     }
 }
@@ -203,23 +204,18 @@ impl<'a> Layer for &'a SegmentedVector<ZeroNode> {
 impl<'a, P: Point> PointMgr<'a, P> for &'a SegmentedVector<P> {
     type R = &'a P;
 
-    fn calc_distance(&self, _a: PointId, _b: PointId) -> f32 {
-        // let a = &self[a];
-        // let b = &self[b];
-        // a.distance(b)
-        todo!()
+    fn calc_distance(&self, a: PointId, b: PointId) -> f32 {
+        let b = self.get(b);
+        self.calc_distance_from(a, &*b)
     }
 
-    fn calc_distance_from(&self, _a: PointId, _b: &P) -> f32 {
-        // let a = &self[a];
-        // TODO: implement [] operator
-        // a.distance(b)
-        todo!()
+    fn calc_distance_from(&self, a: PointId, b: &P) -> f32 {
+        let a = self.get(a);
+        a.distance(b)
     }
 
-    fn get(&'a self, _idx: PointId) -> Self::R {
-        // &self[idx]
-        todo!()
+    fn get(&'a self, idx: PointId) -> Self::R {
+        <SegmentedVector<P>>::get(self, idx.0 as usize).unwrap()
     }
 
     fn num_vectors(&self) -> usize {
