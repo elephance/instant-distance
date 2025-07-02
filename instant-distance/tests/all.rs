@@ -1,10 +1,14 @@
 use std::collections::HashSet;
 
+#[cfg(feature = "segment-vec")]
+use instant_distance::vec::SegmentedVector;
 use ordered_float::OrderedFloat;
 use rand::rngs::{StdRng, ThreadRng};
 use rand::{Rng, SeedableRng};
 
 use instant_distance::{Builder, Point as _, Search};
+#[cfg(feature = "segment-vec")]
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 #[test]
 #[allow(clippy::float_cmp, clippy::approx_constant)]
@@ -95,4 +99,26 @@ impl instant_distance::Point for Point {
         // Euclidean distance metric
         ((self.0 - other.0).powi(2) + (self.1 - other.1).powi(2)).sqrt()
     }
+}
+
+#[cfg(feature = "segment-vec")]
+#[test]
+fn segment_vector() {
+    let mut sv: instant_distance::vec::SegmentedVector<u32> = instant_distance::vec::SegmentedVector::new();
+    // push some values, until we get another segment
+    const MAX_PUSH: usize = 1000;
+    for i in 0..MAX_PUSH {
+        sv.push(i as u32);
+    }
+    assert_eq!(sv.len(), MAX_PUSH);
+    assert_eq!(sv.num_segments(), 1);
+
+    // test collect
+    let sv2 = (0..MAX_PUSH as u32).into_iter().collect::<SegmentedVector<u32>>();
+    assert_eq!(sv, sv2);
+
+    // test parallel iterator
+    const PAR_ITER_MAX: usize = 1_000_000;
+    let sv3: SegmentedVector<u32> = (0..PAR_ITER_MAX as u32).into_par_iter().collect();
+    assert_eq!(sv3, (0..PAR_ITER_MAX as u32).into_iter().collect::<SegmentedVector<u32>>());
 }
