@@ -20,8 +20,9 @@ fn random_simple() {
     assert!(recall > 90, "expected at least 90, got {recall}");
 }
 
+#[allow(dead_code)]
 fn randomized(builder: Builder) -> (u64, usize) {
-    let seed = ThreadRng::default().gen::<u64>();
+    let seed = ThreadRng::default().random::<u64>();
     let mut rng = StdRng::seed_from_u64(seed);
     let points = (0..1024)
         .map(|_| Point(rng.random(), rng.random()))
