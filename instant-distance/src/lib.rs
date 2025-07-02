@@ -21,8 +21,8 @@ mod types;
 pub use types::*;
 // use types::{Candidate, Layer, LayerId, UpperNode, Visited, ZeroNode, INVALID};
 
-#[cfg(feature = "segment-vec")]
-mod vec;
+// #[cfg(feature = "segment-vec")]
+pub mod vec;
 // #[cfg(feature = "segment-vec")]
 // use vec::Vec;
 
@@ -315,10 +315,10 @@ where
 
         // Initialize data for layers
 
-        #[cfg(not(feature = "segmented-vec"))]
+        #[cfg(not(feature = "segment-vec"))]
         let mut layers = vec![vec![]; top.0];
-        #[cfg(feature = "segmented-vec")]
-        let mut layers = vec![vec::Vec::new(); top.0];
+        #[cfg(feature = "segment-vec")]
+        let mut layers = vec![vec::SegmentedVector::new(); top.0];
         let zero = points
             .iter()
             .map(|_| RwLock::new(ZeroNode::default()))
@@ -342,7 +342,6 @@ where
                 bar.set_message(format!("Building index (layer {})", layer.0));
             }
 
-            // TODO: make insterter function work with SegmentedVector
             let inserter = |pid| state.insert(pid, layer, layers.as_slice());
 
             let end = range.end;
@@ -356,13 +355,21 @@ where
 
             // For layers above the zero layer, make a copy of the current state of the zero layer
             // with `nearest` truncated to `M` elements.
+            #[cfg(not(feature = "segment-vec"))]
             if !layer.is_zero() {
                 (&state.zero[..end])
                     .into_par_iter()
                     .map(|zero| UpperNode::from_zero(&zero.read()))
-                    // .collect()
-                    // TODO: implement collect into vec for segmented vector
                     .collect_into_vec(&mut layers[layer.0 - 1]);
+            }
+
+            #[cfg(feature = "segment-vec")]
+            if !layer.is_zero() {
+                layers[layer.0 - 1] = 
+                (&state.zero[..end])
+                    .into_par_iter()
+                    .map(|zero| UpperNode::from_zero(&zero.read()))
+                    .collect();
             }
         }
 
@@ -408,7 +415,6 @@ where
 
             search.ef = ef;
             match cur.0 {
-                // TODO: make search work on PointMgr type ...
                 0 => {
                     #[cfg(feature = "segment-vec")]
                     let layer = &self.zero;
