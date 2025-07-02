@@ -1,5 +1,5 @@
 // pub use std::vec::Vec;
-use std::marker::PhantomData;
+use std::{alloc::Layout, marker::PhantomData};
 
 use rayon::iter::{FromParallelIterator, ParallelIterator};
 
@@ -8,11 +8,14 @@ use crate::{Layer, NearestIter, Point, PointId, PointMgr, UpperNode, ZeroNode};
 pub type Vec<T> = SegmentedVector<T>;
 
 // TODO: implement Clone
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SegmentedVector<T> {
     length: usize,
+    // size of each segment in bytes
     segment_size: usize,
-    segments: std::vec::Vec<SegmentArray<T>>,
+    // segment capacity (number of elements)
+    segment_capacity: usize,
+    segments: std::vec::Vec<Segment<T>>,
 }
 
 impl<T> SegmentedVector<T> {
@@ -21,6 +24,7 @@ impl<T> SegmentedVector<T> {
         Self { 
             length: 0,
             segment_size: Self::DEFAULT_SEGMENT_SIZE,
+            segment_capacity: Self::DEFAULT_SEGMENT_SIZE / std::mem::size_of::<T>(),
             segments: std::vec::Vec::new(),
         }
     }
@@ -30,53 +34,95 @@ impl<T> SegmentedVector<T> {
         self.length
     }
 
-    pub fn iter(&self) -> Iter<'_, T> {
-        // self.segments.iter()
-        todo!()
+    pub fn iter(&self) -> SegmentIter<'_, T> {
+        SegmentIter {
+            vector: self,
+            next: 0
+        }
     }
     
     pub fn segment_size(&self) -> usize {
         self.segment_size
     }
 
-    fn segments(&self) -> std::slice::Iter<SegmentArray<T>> {
+    fn segments(&self) -> std::slice::Iter<Segment<T>> {
         self.segments.iter()
     }
 
-    // TODO: should we hide this?
+    // TODO: hide this
     pub fn num_segments(&self) -> usize {
         self.segments.len()
     }
 
+    // returns the slice containing the desired index for an element,
+    // and the relative index for that element
+    unsafe fn get_slice_containing_unchecked(&self, idx: usize) -> (&[T], usize) {
+        // determine segment from slice
+        // 1. find segment for index
+        let segment_num = idx / self.segment_size;
+        // 2. calculate the relative index
+        let elem_idx = idx % self.segment_size;
+        let segment = self.segments.get_unchecked(segment_num);
+        (segment.as_slice(), elem_idx)
+    }
+
     #[inline]
     pub fn get(&self, idx: usize) -> Option<&T> {
-        if std::intrinsics::likely(idx < self.length) {
-            Ok(self.get_slice_containing_unchecked(idx).get(rel))
+        if idx < self.length {
+            unsafe {
+                let (slice, rel) = self.get_slice_containing_unchecked(idx);
+                Some(slice.get_unchecked(rel))
+            }
         } else {
-            Err("index out of bounds")
+            None
         }
 
     }
 
+    fn add_segment(&mut self) {
+        let segment = Segment::new(self.segment_capacity);
+        self.segments.push(segment);
+    }
+
     pub fn push(&mut self, value: T) {
         // self.segments.push(value);
-        todo!()
+        let segment_idx = self.length / self.segment_capacity;
+        if segment_idx >= self.num_segments() {
+            self.add_segment();
+        }
+        let mut segment = unsafe { self.segments.get_unchecked_mut(segment_idx) };
+        segment.push(value);
+        self.length += 1;
     }
 
 }
 
 // list things to implement:
 // - ref (&) -> slice
-// - iter()
-// - as_slice()
-// - collect()
 
-pub struct Iter<'a, T> {
+impl<T: PartialEq> PartialEq for SegmentedVector<T> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.length != other.length {
+            false
+        } else {
+            // compare elements side by side
+            let zip = self.iter().zip(other.iter());
+            for (x, y) in zip.into_iter() {
+                if x != y {
+                    return false
+                }
+            }
+            true
+        }
+    }
+}
+
+pub struct SegmentIter<'a, T> {
     vector: &'a SegmentedVector<T>,
     next: usize,
 }
 
-impl<'a, T> Iterator for Iter<'a, T> {
+impl<'a, T> Iterator for SegmentIter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
         let idx = self.next;
@@ -91,10 +137,49 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
 // TODO: maybe not change all vec to be segmented vec ...
 #[derive(Debug, Clone, PartialEq)]
-struct SegmentArray<T> {
+struct Segment<T> {
     // TODO: do we make this a vec with the option to have a different allocator?
-    _data: PhantomData<T>,
+    start: *mut T,
+    length: usize,
+    capacity: usize,
 }
+
+impl<T> Segment<T> {
+    fn new(capacity: usize) -> Self {
+        // ask the memory allocator for memory
+        let layout = Layout::array::<T>(capacity).expect("bad layout");
+        let ptr = unsafe { std::alloc::alloc(layout) };
+        Segment { start: ptr.cast(), length: 0, capacity }
+    }
+    fn as_slice(&self) -> &[T] {
+        unsafe { std::slice::from_raw_parts(self.start, self.length) }
+    }
+    
+    fn as_slice_mut(&self) -> &mut [T] {
+        unsafe { std::slice::from_raw_parts_mut(self.start, self.length) }
+    }
+
+    // pushes T, returning an error when the segment is full, otherwise index
+    #[inline]
+    pub(crate) fn push(&mut self, elem: T) -> Result<usize, ()> {
+        // 1. the place we want is the last one
+        let place = self.length;
+        // check bounds
+        if self.length >= self.capacity {
+            return Err(());
+        }
+        // increment length
+        self.length += 1;
+        // 2. index that object
+        let slice = self.as_slice_mut();
+        // 3. store that element
+        slice[place] = elem;
+        // return place where we stored it
+        Ok(place)
+    }
+}
+
+unsafe impl<T> Sync for Segment<T> {}
 
 impl<'a> Layer for &'a SegmentedVector<UpperNode> {
     type Slice = &'a [PointId];
@@ -110,7 +195,7 @@ impl<'a> Layer for &'a SegmentedVector<ZeroNode> {
     type Slice = &'a [PointId];
 
     fn nearest_iter(&self, _pid: PointId) -> NearestIter<Self::Slice> {
-        todo!()
+            todo!()
         // NearestIter::new(&self[pid.0 as usize])
     }
 }
@@ -155,17 +240,10 @@ impl<T: Send> FromParallelIterator<T> for SegmentedVector<T> {
         where
             I: rayon::prelude::IntoParallelIterator<Item = T> 
     {
-        // todo!()
         // could use a variety of methods
         // - use collect_vec_list -> copy each individually
-        // - fold/fold_with (does not preserve order)
-        // - for_each (does not preserve order)
-        // - map items with index, then insert in specified place?
+        // - reserve memory, map items with index, then insert in specified place
         let ordered_list = par_iter.into_par_iter().collect_vec_list();
         ordered_list.into_iter().flatten().collect()
- 
-        // TODO: better impl, use reserve method, add insert as well
-
-        // not the best since it probs uses a ton of memory...
     }
 }
