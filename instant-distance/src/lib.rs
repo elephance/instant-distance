@@ -1,8 +1,7 @@
 use std::{
     cmp::{max, Ordering, Reverse},
     collections::{BinaryHeap, HashSet},
-    ops::{Deref, Index},
-    slice::SliceIndex,
+    ops::Deref,
     sync::atomic::{self, AtomicUsize},
 };
 
