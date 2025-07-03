@@ -1,5 +1,5 @@
 // pub use std::vec::Vec;
-use std::{alloc::Layout, marker::PhantomData};
+use std::alloc::Layout;
 
 use rayon::iter::{FromParallelIterator, ParallelIterator};
 
@@ -45,6 +45,7 @@ impl<T> SegmentedVector<T> {
         self.segment_size
     }
 
+    #[allow(dead_code)]
     fn segments(&self) -> std::slice::Iter<Segment<T>> {
         self.segments.iter()
     }
@@ -76,7 +77,14 @@ impl<T> SegmentedVector<T> {
         } else {
             None
         }
+    }
 
+    #[inline]
+    pub fn get_unchecked(&self, idx: usize) -> &T {
+        unsafe {
+            let (slice, rel) = self.get_slice_containing_unchecked(idx);
+            slice.get_unchecked(rel)
+        }
     }
 
     fn add_segment(&mut self) {
@@ -84,14 +92,16 @@ impl<T> SegmentedVector<T> {
         self.segments.push(segment);
     }
 
+    #[inline]
     pub fn push(&mut self, value: T) {
         // self.segments.push(value);
         let segment_idx = self.length / self.segment_capacity;
         if segment_idx >= self.num_segments() {
             self.add_segment();
         }
-        let mut segment = unsafe { self.segments.get_unchecked_mut(segment_idx) };
-        segment.push(value);
+        let segment = unsafe { self.segments.get_unchecked_mut(segment_idx) };
+        // TODO: push unchecked? since we already bounds checked before ...
+        let _ = segment.push(value);
         self.length += 1;
     }
 

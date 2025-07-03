@@ -21,7 +21,7 @@ mod types;
 pub use types::*;
 // use types::{Candidate, Layer, LayerId, UpperNode, Visited, ZeroNode, INVALID};
 
-// #[cfg(feature = "segment-vec")]
+#[cfg(feature = "segment-vec")]
 pub mod vec;
 // #[cfg(feature = "segment-vec")]
 // use vec::Vec;
@@ -591,16 +591,18 @@ impl<P: Point> Construction<'_, P> {
             }
         }
 
-        let value = self.done.fetch_add(1, atomic::Ordering::Relaxed);
-        if value % 1000 == 0 {
-            eprint!(
-                "building index, point {} / {}, in layer {}              \r",
-                value,
-                self.points.len(),
-                layer.0,
-            );
+        #[cfg(not(feature = "indicatif"))]
+        {
+            let value = self.done.fetch_add(1, atomic::Ordering::Relaxed);
+            if value % 1000 == 0 {
+                eprint!(
+                    "building index, point {} / {}, in layer {}              \r",
+                    value,
+                    self.points.len(),
+                    layer.0,
+                );
+            }
         }
-
         self.pool.push((search, insertion));
     }
 }
