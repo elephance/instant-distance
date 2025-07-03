@@ -60,9 +60,9 @@ impl<T> SegmentedVector<T> {
     unsafe fn get_slice_containing_unchecked(&self, idx: usize) -> (&[T], usize) {
         // determine segment from slice
         // 1. find segment for index
-        let segment_num = idx / self.segment_size;
+        let segment_num = idx / self.segment_capacity;
         // 2. calculate the relative index
-        let elem_idx = idx % self.segment_size;
+        let elem_idx = idx % self.segment_capacity;
         let segment = self.segments.get_unchecked(segment_num);
         (segment.as_slice(), elem_idx)
     }
@@ -94,14 +94,13 @@ impl<T> SegmentedVector<T> {
 
     #[inline]
     pub fn push(&mut self, value: T) {
-        // self.segments.push(value);
         let segment_idx = self.length / self.segment_capacity;
         if segment_idx >= self.num_segments() {
             self.add_segment();
         }
         let segment = unsafe { self.segments.get_unchecked_mut(segment_idx) };
         // TODO: push unchecked? since we already bounds checked before ...
-        let _ = segment.push(value);
+        let _ = segment.push_unchecked(value);
         self.length += 1;
     }
 
@@ -145,7 +144,6 @@ impl<'a, T> Iterator for SegmentIter<'a, T> {
     }
 }
 
-// TODO: maybe not change all vec to be segmented vec ...
 #[derive(Debug, Clone, PartialEq)]
 struct Segment<T> {
     // TODO: do we make this a vec with the option to have a different allocator?
@@ -187,6 +185,21 @@ impl<T> Segment<T> {
         // return place where we stored it
         Ok(place)
     }
+
+    // pushes T returning the index it was inserted in
+    #[inline]
+    pub(crate) fn push_unchecked(&mut self, elem: T) -> usize {
+        // 1. the place we want is the last one
+        let place = self.length;
+        // increment length
+        self.length += 1;
+        // 2. index that object
+        let slice = self.as_slice_mut();
+        // 3. store that element
+        slice[place] = elem;
+        // return place where we stored it
+        place
+    }
 }
 
 unsafe impl<T> Sync for Segment<T> {}
@@ -195,8 +208,7 @@ impl<'a> Layer for &'a SegmentedVector<UpperNode> {
     type Slice = &'a [PointId];
 
     fn nearest_iter(&self, pid: PointId) -> NearestIter<Self::Slice> {
-        // TODO: get unchecked ...
-        let node = self.get(pid.0 as usize).unwrap();
+        let node = self.get_unchecked(pid.0 as usize);
         NearestIter::new(&node.0)
     }
 }
@@ -205,7 +217,7 @@ impl<'a> Layer for &'a SegmentedVector<ZeroNode> {
     type Slice = &'a [PointId];
 
     fn nearest_iter(&self, pid: PointId) -> NearestIter<Self::Slice> {
-        let node = self.get(pid.0 as usize).unwrap();
+        let node = self.get_unchecked(pid.0 as usize);
         NearestIter::new(&node)
         // NearestIter::new(&self[pid.0 as usize])
     }
@@ -225,7 +237,7 @@ impl<'a, P: Point> PointMgr<'a, P> for &'a SegmentedVector<P> {
     }
 
     fn get(&'a self, idx: PointId) -> Self::R {
-        <SegmentedVector<P>>::get(self, idx.0 as usize).unwrap()
+        <SegmentedVector<P>>::get_unchecked(self, idx.0 as usize)
     }
 
     fn num_vectors(&self) -> usize {
