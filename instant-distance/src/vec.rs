@@ -169,6 +169,7 @@ impl<T> Segment<T> {
 
     // pushes T, returning an error when the segment is full, otherwise index
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn push(&mut self, elem: T) -> Result<usize, ()> {
         // 1. the place we want is the last one
         let place = self.length;
@@ -233,7 +234,7 @@ impl<'a, P: Point> PointMgr<'a, P> for &'a SegmentedVector<P> {
 
     fn calc_distance_from(&self, a: PointId, b: &P) -> f32 {
         let a = self.get(a);
-        a.distance(b)
+        a.xdistance(b)
     }
 
     fn get(&'a self, idx: PointId) -> Self::R {
