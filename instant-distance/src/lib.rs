@@ -12,7 +12,7 @@ use indicatif::ProgressBar;
 use ordered_float::OrderedFloat;
 use parking_lot::{Mutex, RwLock};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
