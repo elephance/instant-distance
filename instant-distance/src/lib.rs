@@ -13,6 +13,8 @@ use ordered_float::OrderedFloat;
 use parking_lot::{Mutex, RwLock};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+#[cfg(not(feature = "segment-vec"))]
+use rayon::iter::IndexedParallelIterator;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
