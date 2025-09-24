@@ -4,17 +4,17 @@ use std::{
     ops::Deref,
     sync::atomic::{self, AtomicUsize},
 };
+
 // #[cfg(not(feature = "segment-vec"))]
 // use std::vec::Vec;
-
 #[cfg(feature = "indicatif")]
 use indicatif::ProgressBar;
 use ordered_float::OrderedFloat;
 use parking_lot::{Mutex, RwLock};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 #[cfg(not(feature = "segment-vec"))]
 use rayon::iter::IndexedParallelIterator;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +27,6 @@ pub use types::*;
 pub mod vec;
 // #[cfg(feature = "segment-vec")]
 // use vec::Vec;
-
 
 #[derive(Clone)]
 /// Parameters for building the `Hnsw`
@@ -227,10 +226,10 @@ pub struct Hnsw<P> {
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[cfg(feature = "segment-vec")]
 pub struct Hnsw<P> {
-    ef_search: usize,
-    points: Vec<P>,
-    zero: vec::Vec<ZeroNode>,
-    layers: Vec<vec::Vec<UpperNode>>,
+    pub ef_search: usize,
+    pub points: Vec<P>,
+    pub zero: vec::Vec<ZeroNode>,
+    pub layers: Vec<vec::Vec<UpperNode>>,
 }
 
 impl<P> Hnsw<P>
@@ -367,8 +366,7 @@ where
 
             #[cfg(feature = "segment-vec")]
             if !layer.is_zero() {
-                layers[layer.0 - 1] = 
-                (&state.zero[..end])
+                layers[layer.0 - 1] = (&state.zero[..end])
                     .into_par_iter()
                     .map(|zero| UpperNode::from_zero(&zero.read()))
                     .collect();
@@ -423,14 +421,14 @@ where
                     #[cfg(not(feature = "segment-vec"))]
                     let layer = self.zero.as_slice();
                     search.search(point, layer, &self.points.as_slice(), num)
-                },
+                }
                 l => {
                     #[cfg(feature = "segment-vec")]
                     let layer = &self.layers[l - 1];
                     #[cfg(not(feature = "segment-vec"))]
                     let layer = self.layers[l - 1].as_slice();
                     search.search(point, layer, &self.points.as_slice(), num)
-                },
+                }
             }
 
             if !cur.is_zero() {
@@ -492,11 +490,12 @@ impl<P: Point> Construction<'_, P> {
     ///
     /// Creates the new node, initializing its `nearest` array and updates the nearest neighbors
     /// for the new node's neighbors if necessary before appending the new node to the layer.
-    fn insert(&self, new: PointId, layer: LayerId, 
-        #[cfg(feature = "segment-vec")]
-        layers: &[vec::SegmentedVector<UpperNode>],
-        #[cfg(not(feature = "segment-vec"))]
-        layers: &[Vec<UpperNode>]
+    fn insert(
+        &self,
+        new: PointId,
+        layer: LayerId,
+        #[cfg(feature = "segment-vec")] layers: &[vec::SegmentedVector<UpperNode>],
+        #[cfg(not(feature = "segment-vec"))] layers: &[Vec<UpperNode>],
     ) {
         let mut node = self.zero[new].write();
         let (mut search, mut insertion) = self.pool.pop();
