@@ -595,7 +595,7 @@ impl<P: Point> Construction<'_, P> {
         #[cfg(not(feature = "indicatif"))]
         {
             let value = self.done.fetch_add(1, atomic::Ordering::Relaxed);
-            if value % 1000 == 0 {
+            if value % 1000 == 0 && value > 10_000 {
                 eprint!(
                     "building index, point {} / {}, in layer {}              \r",
                     value,
